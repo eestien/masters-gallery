@@ -62,6 +62,35 @@ function deriveColumnMap(cols) {
   return map
 }
 
+// Extract Google Drive file ID from common link formats or bare ID
+function extractDriveId(raw) {
+  const val = String(raw || "").trim()
+  if (!val) return ""
+  // /file/d/{id}/
+  const mFile = val.match(/https?:\/\/drive\.google\.com\/file\/d\/([^/]+)\//)
+  if (mFile && mFile[1]) return mFile[1]
+  // open?id={id} or uc?id={id}
+  const mQuery = val.match(/[?&]id=([^&#]+)/)
+  if (mQuery && mQuery[1]) return mQuery[1]
+  // bare id heuristic
+  if (/^[A-Za-z0-9_-]{20,}$/.test(val)) return val
+  return ""
+}
+
+// Convert Google Drive share links or file IDs into a direct-serving URL
+// Accepted inputs in the Sheet's `image` column:
+// - File ID: 1vEsGeXX2EwuhpPGVpGNnNE_uPA7YLlaP
+// - Share link: https://drive.google.com/file/d/ID/view?usp=...
+// - Open link:  https://drive.google.com/open?id=ID
+// - uc link:    https://drive.google.com/uc?id=ID
+// Returns: https://drive.google.com/uc?export=view&id=ID
+function normalizeDriveImageUrl(raw) {
+  const id = extractDriveId(raw)
+  if (id) return `https://drive.google.com/uc?export=view&id=${id}`
+  const val = String(raw || "").trim()
+  return val
+}
+
 async function fetchMasters() {
   // 1) Prefer backend endpoint if provided
   if (CONFIG.DATA_ENDPOINT) {
@@ -75,7 +104,7 @@ async function fetchMasters() {
             field: String(it.field || it.profile || "").trim(),
             contact: String(it.contact || "").trim(),
             location: String(it.location || "").trim(),
-            image: String(it.image || "").trim() || "/placeholder.svg?height=400&width=340",
+            image: normalizeDriveImageUrl(String(it.image || "").trim()),
           }))
           .filter((m) => m.name || m.field || m.location || m.contact)
       }
@@ -87,7 +116,7 @@ async function fetchMasters() {
             field: String(it.field || it.profile || "").trim(),
             contact: String(it.contact || "").trim(),
             location: String(it.location || "").trim(),
-            image: String(it.image || "").trim() || "/placeholder.svg?height=400&width=340",
+            image: normalizeDriveImageUrl(String(it.image || "").trim()) || "/placeholder.svg?height=400&width=340",
           }))
           .filter((m) => m.name || m.field || m.location || m.contact)
       }
@@ -133,7 +162,7 @@ async function fetchMasters() {
         field,
         contact,
         location,
-        image: image || "/placeholder.svg?height=400&width=340",
+        image: normalizeDriveImageUrl(image),
       }
     })
     .filter(Boolean)
@@ -141,22 +170,6 @@ async function fetchMasters() {
   return result
 }
 
-function sampleData() {
-  return [
-    { name: "Yuki Tanaka", field: "Clothes Design", location: "Kyoto, Japan", contact: "yuki.tanaka@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Marco Bellini", field: "Sculpture", location: "Florence, Italy", contact: "marco.bellini@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Sofia Martinez", field: "Coffee", location: "Medellín, Colombia", contact: "sofia.martinez@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Erik Johansson", field: "Woodcraft", location: "Stockholm, Sweden", contact: "erik.johansson@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Amara Okafor", field: "Clothes Design", location: "Lagos, Nigeria", contact: "amara.okafor@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Li Wei", field: "Sculpture", location: "Beijing, China", contact: "li.wei@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Isabella Costa", field: "Coffee", location: "São Paulo, Brazil", contact: "isabella.costa@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Hans Mueller", field: "Woodcraft", location: "Munich, Germany", contact: "hans.mueller@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Priya Sharma", field: "Clothes Design", location: "Mumbai, India", contact: "priya.sharma@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Jean Dubois", field: "Sculpture", location: "Paris, France", contact: "jean.dubois@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Ayana Bekele", field: "Coffee", location: "Addis Ababa, Ethiopia", contact: "ayana.bekele@email.com", image: "/placeholder.svg?height=400&width=340" },
-    { name: "Robert Chen", field: "Woodcraft", location: "Portland, USA", contact: "robert.chen@email.com", image: "/placeholder.svg?height=400&width=340" },
-  ]
-}
 
 // UI helpers
 function uniqueValues(arr) {
@@ -191,19 +204,40 @@ function renderGallery() {
   emptyState.style.display = "none"
 
   gallery.innerHTML = filtered
-    .map(
-      (master) => `
+    .map((master) => {
+      const imageHtml = master.image ? `<img class="card-image" src="${master.image}" alt="${master.name}">` : ""
+      return `
       <div class="master-card" data-master='${JSON.stringify(master)}'>
-        <img class="card-image" src="${master.image}" alt="${master.name}">
+        ${imageHtml}
         <div class="card-content">
           <h3 class="card-name">${master.name}</h3>
           <p class="card-field">${master.field}</p>
           <p class="card-location">${master.location}</p>
         </div>
       </div>
-    `,
-    )
+    `
+    })
     .join("")
+
+  // Attach diagnostics and a Drive-native thumbnail fallback (no mockups)
+  document.querySelectorAll(".card-image").forEach((img) => {
+    img.loading = "lazy"
+    let triedThumb = false
+    img.addEventListener("error", () => {
+      console.error("Image failed to load:", img.src)
+      if (!triedThumb) {
+        const idMatch = img.src.match(/[?&]id=([^&#]+)/)
+        const id = idMatch && idMatch[1]
+        if (id) {
+          triedThumb = true
+          img.src = `https://drive.google.com/thumbnail?id=${id}&sz=w1000`
+          return
+        }
+      }
+      // if no id or thumbnail also failed, hide the broken image
+      img.style.display = "none"
+    })
+  })
 
   document.querySelectorAll(".master-card").forEach((card) => {
     card.addEventListener("click", () => {
@@ -252,7 +286,34 @@ function wireMarquees() {
 function openModal(master) {
   const modal = document.getElementById("modal")
   if (!modal) return
-  document.getElementById("modalImage").src = master.image
+  const modalImg = document.getElementById("modalImage")
+  if (modalImg) {
+    // Reset any previous handlers/state
+    modalImg.style.display = ""
+    modalImg.removeAttribute("src")
+    modalImg.onload = null
+    modalImg.onerror = null
+
+    if (master.image) {
+      let triedThumb = false
+      modalImg.onerror = () => {
+        console.error("Modal image failed to load:", master.image)
+        if (!triedThumb) {
+          const idMatch = (master.image || "").match(/[?&]id=([^&#]+)/)
+          const id = idMatch && idMatch[1]
+          if (id) {
+            triedThumb = true
+            modalImg.src = `https://drive.google.com/thumbnail?id=${id}&sz=w1200`
+            return
+          }
+        }
+        modalImg.style.display = "none"
+      }
+      modalImg.src = master.image
+    } else {
+      modalImg.style.display = "none"
+    }
+  }
   document.getElementById("modalName").textContent = master.name
   document.getElementById("modalField").textContent = master.field
   document.getElementById("modalLocation").textContent = master.location
