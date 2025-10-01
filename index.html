@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Masters Gallery - Artisans of Excellence</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Masters Gallery</h1>
+        <p class="subtitle">Artisans of Excellence from Around the World</p>
+    </header>
+
+    <div class="marquee-section">
+        <div class="marquee-container" id="fieldsMarquee">
+             Will be populated by JS 
+        </div>
+    </div>
+
+    <div class="marquee-section">
+        <div class="marquee-container reverse" id="locationsMarquee">
+             Will be populated by JS 
+        </div>
+    </div>
+
+    <main>
+        <div class="gallery-grid" id="gallery">
+             Cards will be populated by JS 
+        </div>
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <h3>No masters found</h3>
+            <p>Try selecting different filters</p>
+        </div>
+    </main>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="modalClose">×</button>
+            <img class="modal-image" id="modalImage" src="/placeholder.svg" alt="">
+            <div class="modal-info">
+                <h2 class="modal-name" id="modalName"></h2>
+                <p class="modal-field" id="modalField"></p>
+                <div class="modal-details">
+                    <div class="detail-item">
+                        <span class="detail-label">Location</span>
+                        <span class="detail-value" id="modalLocation"></span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Contact</span>
+                        <span class="detail-value" id="modalContact"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
