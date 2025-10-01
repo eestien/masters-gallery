@@ -3,17 +3,30 @@
 // Optional: Image (if present, will be used as card image). Otherwise a placeholder is shown.
 
 const CONFIG = {
-  SHEET_ID: "", // TODO: set your Google Sheet ID
+  SHEET_ID: "", // Optional if using DATA_ENDPOINT
   SHEET_NAME: "Masters", // TODO: set your Sheet tab name (or change to gid usage below)
   // If you prefer using gid instead of sheet name, set SHEET_GID and use buildGvizUrlByGid()
   SHEET_GID: null,
+  // Optional: If you deploy the Apps Script web app, set its URL here to fetch directly
+  // Example: 'https://script.google.com/macros/s/AKfycbx.../exec'
+  DATA_ENDPOINT: "https://script.google.com/macros/s/AKfycbwLoM_BD9xQoe5WDUFkmGA5F-z-z-M3hVG8ujgO5L2pqKrSJ6PxzKRW5V_9QqNg7IEC/exec",
 }
-
 let masters = []
 let selectedField = null
 let selectedLocation = null
-
 // Utilities
+function showLoading() {
+  const overlay = document.getElementById("loadingOverlay")
+  if (overlay) overlay.classList.add("active")
+  document.body.classList.add("loading")
+}
+
+function hideLoading() {
+  const overlay = document.getElementById("loadingOverlay")
+  if (overlay) overlay.classList.remove("active")
+  document.body.classList.remove("loading")
+}
+
 function buildGvizUrlByName(sheetId, sheetName) {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`
 }
@@ -50,8 +63,42 @@ function deriveColumnMap(cols) {
 }
 
 async function fetchMasters() {
+  // 1) Prefer backend endpoint if provided
+  if (CONFIG.DATA_ENDPOINT) {
+    try {
+      const res = await fetch(CONFIG.DATA_ENDPOINT, { method: "GET" })
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        return data
+          .map((it) => ({
+            name: String(it.name || "").trim(),
+            field: String(it.field || it.profile || "").trim(),
+            contact: String(it.contact || "").trim(),
+            location: String(it.location || "").trim(),
+            image: String(it.image || "").trim() || "/placeholder.svg?height=400&width=340",
+          }))
+          .filter((m) => m.name || m.field || m.location || m.contact)
+      }
+      // If backend returns wrapped object like {ok, data}, try common patterns
+      if (data && Array.isArray(data.items)) {
+        return data.items
+          .map((it) => ({
+            name: String(it.name || "").trim(),
+            field: String(it.field || it.profile || "").trim(),
+            contact: String(it.contact || "").trim(),
+            location: String(it.location || "").trim(),
+            image: String(it.image || "").trim() || "/placeholder.svg?height=400&width=340",
+          }))
+          .filter((m) => m.name || m.field || m.location || m.contact)
+      }
+    } catch (err) {
+      console.warn("Failed to fetch from DATA_ENDPOINT, falling back to Google Sheets.", err)
+    }
+  }
+
+  // 2) Fall back to Google Sheets gviz public read
   if (!CONFIG.SHEET_ID) {
-    console.warn("SHEET_ID not set. Using example fallback data.")
+    console.warn("Neither DATA_ENDPOINT nor SHEET_ID set. Using sample fallback data.")
     return sampleData()
   }
 
@@ -68,9 +115,9 @@ async function fetchMasters() {
   const colMap = deriveColumnMap(cols)
 
   const idxName = colMap["name"]
-  const idxProfile = colMap["profile"]
-  const idxContact = colMap["contact"]
-  const idxLocation = colMap["location"]
+  const idxProfile = colMap["profile"] || colMap["field"] || colMap["profession"]
+  const idxContact = colMap["contact"] || colMap["email"] || colMap["phone"]
+  const idxLocation = colMap["location"] || colMap["city"] || colMap["place"]
   const idxImage = colMap["image"] // optional
 
   const result = rows
@@ -237,18 +284,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   wireModal()
   wireMarquees()
 
+  showLoading()
   try {
     masters = await fetchMasters()
   } catch (e) {
     console.error("Failed to fetch from Google Sheets, using sample data.", e)
     masters = sampleData()
+  } finally {
+    const fields = uniqueValues(masters.map((m) => m.field))
+    const locations = uniqueValues(masters.map((m) => m.location))
+
+    populateMarquee("fieldsMarquee", fields, "field")
+    populateMarquee("locationsMarquee", locations, "location")
+
+    renderGallery()
+    hideLoading()
   }
-
-  const fields = uniqueValues(masters.map((m) => m.field))
-  const locations = uniqueValues(masters.map((m) => m.location))
-
-  populateMarquee("fieldsMarquee", fields, "field")
-  populateMarquee("locationsMarquee", locations, "location")
-
-  renderGallery()
 })
