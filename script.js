@@ -185,6 +185,72 @@ function populateMarquee(containerId, items, type) {
     .join("")
 }
 
+// JS-driven infinite marquee without visual restarts
+function startInfiniteMarquee(containerId, direction = "left", speed = 60) {
+  const container = document.getElementById(containerId)
+  if (!container) return
+
+  // Stop CSS animation to prevent resets/restarts
+  container.style.animation = "none"
+
+  // Ensure we have at least two copies for seamless loop
+  if (container.children.length > 0) {
+    container.innerHTML = container.innerHTML + container.innerHTML
+  }
+
+  let pos = 0
+  let last = performance.now()
+  let contentWidth = container.scrollWidth / 2 // width of a single sequence
+  const dir = direction === "right" ? 1 : -1
+
+  // Keep transform independent of CSS
+  container.style.willChange = "transform"
+
+  // Hover to pause
+  let paused = false
+  const onEnter = () => { paused = true }
+  const onLeave = () => { paused = false }
+  container.addEventListener("mouseenter", onEnter)
+  container.addEventListener("mouseleave", onLeave)
+
+  function updateContentWidth() {
+    // Measure a single sequence width reliably
+    contentWidth = container.scrollWidth / 2
+  }
+
+  const onResize = () => {
+    const prev = contentWidth
+    updateContentWidth()
+    // Adjust position proportionally to avoid jumps on resize
+    if (prev > 0 && contentWidth > 0) {
+      pos = (pos % contentWidth)
+    }
+  }
+  window.addEventListener("resize", onResize)
+
+  function tick(now) {
+    const dt = Math.min(64, now - last) // cap delta for long tab sleeps
+    last = now
+    if (!paused) {
+      pos += dir * speed * (dt / 1000)
+    }
+
+    // Wrap-around without resetting animation
+    if (dir < 0 && Math.abs(pos) >= contentWidth) {
+      pos += contentWidth
+    } else if (dir > 0 && pos >= 0) {
+      pos -= contentWidth
+    }
+
+    container.style.transform = `translateX(${pos}px)`
+    requestAnimationFrame(tick)
+  }
+
+  // Initial measure and start
+  updateContentWidth()
+  requestAnimationFrame(tick)
+}
+
 function renderGallery() {
   const gallery = document.getElementById("gallery")
   const emptyState = document.getElementById("emptyState")
@@ -357,6 +423,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     populateMarquee("fieldsMarquee", fields, "field")
     populateMarquee("locationsMarquee", locations, "location")
+
+    // Start seamless infinite scrolling (no CSS animation restarts)
+    startInfiniteMarquee("fieldsMarquee", "left", 60)
+    startInfiniteMarquee("locationsMarquee", "right", 60)
 
     renderGallery()
     hideLoading()
