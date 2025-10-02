@@ -349,6 +349,55 @@ function wireMarquees() {
 }
 
 // Modal
+// Convert raw contact string into clickable HTML (mailto, tel, or URL)
+function buildContactHTML(contactRaw) {
+  const text = String(contactRaw || "").trim()
+  if (!text) return ""
+
+  const parts = text.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
+
+  const html = parts.map((p) => {
+    const original = p
+    // Email
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p)) {
+      return `<a href="mailto:${original}">${escapeHtml(original)}</a>`
+    }
+    // Tel (simple heuristic)
+    if (/^\+?[0-9()\-\s]{6,}$/.test(p)) {
+      const tel = p.replace(/[^\d+]/g, "")
+      return `<a href="tel:${tel}">${escapeHtml(original)}</a>`
+    }
+    // Already a mailto/tel
+    if (/^(mailto:|tel:)/i.test(p)) {
+      return `<a href="${escapeAttr(p)}">${escapeHtml(original.replace(/^(mailto:|tel:)/i, ""))}</a>`
+    }
+    // URL (add https if missing scheme and looks like a domain)
+    let url = p
+    if (!/^https?:\/\//i.test(url) && /\./.test(url)) {
+      url = `https://${url}`
+    }
+    if (/^https?:\/\//i.test(url)) {
+      return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(original)}</a>`
+    }
+    // Fallback: plain text
+    return escapeHtml(original)
+  })
+
+  return html.join(", ")
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/'/g, "&#39;")
+}
+
 function openModal(master) {
   const modal = document.getElementById("modal")
   if (!modal) return
@@ -383,7 +432,10 @@ function openModal(master) {
   document.getElementById("modalName").textContent = master.name
   document.getElementById("modalField").textContent = master.field
   document.getElementById("modalLocation").textContent = master.location
-  document.getElementById("modalContact").textContent = master.contact
+  const contactEl = document.getElementById("modalContact")
+  if (contactEl) {
+    contactEl.innerHTML = buildContactHTML(master.contact)
+  }
   modal.classList.add("active")
   document.body.style.overflow = "hidden"
 }
